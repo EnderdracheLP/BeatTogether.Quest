@@ -1,0 +1,7 @@
+[submodule "extern/zip"]
+	path = extern/zip
+	url = https://github.com/kuba--/zip.git
+[submodule "extern/songloader"]
+	path = extern/songloader
+	url = https://github.com/darknight1050/SongLoader.git
+	branch = async-test

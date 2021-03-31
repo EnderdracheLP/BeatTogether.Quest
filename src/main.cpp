@@ -11,6 +11,7 @@
 #include "beatsaber-hook/shared/config/config-utils.hpp"
 
 #include "System/Threading/Tasks/Task_1.hpp"
+#include "System/Threading/CancellationToken.hpp"
 
 #include "GlobalNamespace/PlatformAuthenticationTokenProvider.hpp"
 #include "GlobalNamespace/AuthenticationToken.hpp"
@@ -30,6 +31,7 @@
 #include "GlobalNamespace/LevelSelectionFlowCoordinator_State.hpp"
 #include "GlobalNamespace/SongPackMask.hpp"
 #include "GlobalNamespace/BeatmapDifficultyMask.hpp"
+#include "GlobalNamespace/EntitlementsStatus.hpp"
 
 using namespace GlobalNamespace;
 
@@ -37,6 +39,10 @@ using namespace GlobalNamespace;
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/Resources.hpp"
 #include "TMPro/TextMeshProUGUI.hpp"
+
+#include "BTMapDownloadPrivate.h"
+
+using namespace BTDownloader;
 
 #ifndef HOST_NAME
 #error "Define HOST_NAME!"
@@ -50,9 +56,18 @@ using namespace GlobalNamespace;
 #error "Define STATUS_URL!"
 #endif
 
-Logger& getLogger();
+//Logger& getLogger();
 
 static ModInfo modInfo;
+
+ModInfo& BTDownloader::getModInfo() {
+    return modInfo;
+}
+
+Logger& BTDownloader::getLogger() {
+    static Logger* logger = new Logger(modInfo, LoggerOptions(false, true));
+    return *logger;
+}
 
 class ModConfig {
     public:
@@ -76,7 +91,7 @@ class ModConfig {
             }
             file.close();
         }
-        constexpr inline int get_port() const {
+        inline int get_port() const {
             return port;
         }
         inline Il2CppString* get_hostname() const {
@@ -120,11 +135,11 @@ class ModConfig {
 
 static ModConfig config;
 
-Logger& getLogger()
-{
-    static Logger* logger = new Logger(modInfo, LoggerOptions(false, true));
-    return *logger;
-}
+//Logger& getLogger()
+//{
+//    static Logger* logger = new Logger(modInfo, LoggerOptions(false, true));
+//    return *logger;
+//}
 
 static auto customLevelPrefixLength = 13;
 
@@ -135,8 +150,8 @@ Il2CppString* getCustomLevelStr() {
 
 // Helper method for concatenating two strings using the Concat(System.Object) method.
 Il2CppString* concatHelper(Il2CppString* src, Il2CppString* dst) {
-    static auto* concatMethod = il2cpp_utils::FindMethod(il2cpp_functions::defaults->string_class, "Concat", std::vector<Il2CppClass*>{il2cpp_functions::defaults->object_class});
-    return RET_DEFAULT_UNLESS(getLogger(), il2cpp_utils::RunMethod<Il2CppString*>(src, concatMethod, dst));
+    static auto* concatMethod = il2cpp_utils::FindMethod(il2cpp_functions::defaults->string_class, "Concat", il2cpp_functions::defaults->string_class, il2cpp_functions::defaults->string_class);
+    return RET_DEFAULT_UNLESS(getLogger(), il2cpp_utils::RunMethod<Il2CppString*>((Il2CppObject*) nullptr, concatMethod, src, dst));
 }
 
 MAKE_HOOK_OFFSETLESS(PlatformAuthenticationTokenProvider_GetAuthenticationToken, System::Threading::Tasks::Task_1<GlobalNamespace::AuthenticationToken>*, PlatformAuthenticationTokenProvider* self)
@@ -150,27 +165,76 @@ MAKE_HOOK_OFFSETLESS(PlatformAuthenticationTokenProvider_GetAuthenticationToken,
     ));
 }
 
+MAKE_HOOK_OFFSETLESS(NetworkPlayerEntitlementChecker_GetPlayerLevelEntitlementsAsync, System::Threading::Tasks::Task_1<EntitlementsStatus>*, IConnectedPlayer* player, Il2CppString* levelId, System::Threading::CancellationToken token) {
+
+    return NetworkPlayerEntitlementChecker_GetPlayerLevelEntitlementsAsync(player, levelId, token);
+}
+
 MAKE_HOOK_OFFSETLESS(MainSystemInit_Init, void, MainSystemInit* self) {
     MainSystemInit_Init(self);
     auto* networkConfig = self->networkConfig;
 
     getLogger().info("Overriding master server end point . . .");
+    getLogger().info("Original status URL: " + to_utf8(csstrtostr(networkConfig->masterServerStatusUrl)));
     // If we fail to make the strings, we should fail silently
     // This could also be replaced with a CRASH_UNLESS call, if you want to fail verbosely.
-    networkConfig->masterServerHostName = RET_V_UNLESS(getLogger(), config.get_hostname());
-    networkConfig->masterServerPort = RET_V_UNLESS(getLogger(), config.get_port());
-    networkConfig->masterServerStatusUrl = RET_V_UNLESS(getLogger(), config.get_statusUrl());
+    networkConfig->masterServerHostName = CRASH_UNLESS(/*getLogger(), */config.get_hostname());
+    networkConfig->masterServerPort = CRASH_UNLESS(/*getLogger(), */config.get_port());
+    networkConfig->masterServerStatusUrl = CRASH_UNLESS(/*getLogger(), */config.get_statusUrl());
 }
 
-MAKE_HOOK_OFFSETLESS(X509CertificateUtility_ValidateCertificateChainUnity, void, Il2CppObject* self, Il2CppObject* certificate, Il2CppObject* certificateChain)
+MAKE_HOOK_OFFSETLESS(UserMessageHandler_ValidateCertificateChainInternal, void, Il2CppObject* self, Il2CppObject* certificate, Il2CppObject* certificateChain)
 {
     // TODO: Support disabling the mod if official multiplayer is ever fixed
     // It'd be best if we do certificate validation here...
     // but for now we'll just skip it.
 }
 
+MAKE_HOOK_OFFSETLESS(MultiplayerLevelLoader_LoadLevel, void, MultiplayerLevelLoader* self, BeatmapIdentifierNetSerializable* beatmapId, GameplayModifiers* gameModifiers, float initialStartTime) {
+    static bool isAttemptingDownload = false;
+    static BeatmapIdentifierNetSerializable* latestSelectedBeatmapId;
+    static GameplayModifiers* latestSelectedGameModifiers;
+    static float latestSelectedInitialStartTime;
 
+    // Save values
+    latestSelectedBeatmapId = beatmapId;
+    latestSelectedGameModifiers = gameModifiers;
+    latestSelectedInitialStartTime = initialStartTime;
 
+    auto beatmapIdString = to_utf8(csstrtostr(beatmapId->levelID));
+    getLogger().info("Loading level %s", beatmapIdString.data());
+
+    //auto level = SongManager::sharedInstance().getLevelPreviewByID(beatmapId->levelID);
+
+    //if (level) {
+    //    auto casted = reinterpret_cast<Il2CppObject*>(level);
+    //    getLogger().info("Level type is %s", casted->klass->name);
+    //}
+
+    //if (!level && !isAttemptingDownload) {
+    //    getLogger().info("Level pack not found, downloading from BeatSaver!!");
+    //    auto levelHash = SongManager::getLevelHashFromID(beatmapIdString);
+
+    //    //if (SongManager::downloadLevelByHash(levelHash, [&](auto levelPath) {
+    //    //    SongManager::sharedInstance().updateSongs(); // Actually loads the song
+    //    //    getLogger().info(
+    //    //        "Custom level downloaded and loaded. Calling LoadLevel with parameters: self=%#08x, beatmapId=%#08x, modifiers=%#08x, initStartTime=%f...",
+    //    //        self, latestSelectedBeatmapId, latestSelectedGameModifiers, latestSelectedInitialStartTime
+    //    //    );
+    //    //    self->LoadLevel(latestSelectedBeatmapId, latestSelectedGameModifiers, latestSelectedInitialStartTime);
+    //    //    })) {
+    //    //    getLogger().info("Downloading level...");
+    //    //    isAttemptingDownload = true;
+    //    //    return;
+    //    //}
+    //    else {
+    //        getLogger().warning("Download task aborted: level is already being downloaded.");
+    //    }
+    //}
+    isAttemptingDownload = false;
+
+    MultiplayerLevelLoader_LoadLevel(self, beatmapId, gameModifiers, initialStartTime);
+}
 
 // Disable the quick play button
 MAKE_HOOK_OFFSETLESS(MultiplayerModeSelectionViewController_DidActivate, void, MultiplayerModeSelectionViewController* self, bool firstActivation, bool addedToHierarchy, bool systemScreenEnabling)
@@ -200,6 +264,7 @@ MAKE_HOOK_OFFSETLESS(MainMenuViewController_DidActivate, void, MainMenuViewContr
     TMPro::TextMeshProUGUI* onlineButtonText = onlineButtonTextObj->GetComponent<TMPro::TextMeshProUGUI*>();
     // If we fail to get any valid button text, crash verbosely.
     // TODO: This could be replaced with a non-intense crash, if we can ensure that DidActivate also works as intended.
+    onlineButtonText->set_text(CRASH_UNLESS(config.get_button()));
     
     // Align the Text in the Center
     onlineButtonText->set_alignment(TMPro::TextAlignmentOptions::Center);
@@ -236,7 +301,6 @@ MAKE_HOOK_OFFSETLESS(HostLobbySetupViewController_SetStartGameEnabled, void, Hos
     }
     HostLobbySetupViewController_SetStartGameEnabled(self, startGameEnabled, cannotStartGameReason);
 }
-
 
 MAKE_HOOK_OFFSETLESS(MultiplayerLevelSelectionFlowCoordinator_Setup, void, MultiplayerLevelSelectionFlowCoordinator* self, LevelSelectionFlowCoordinator::State* state, SongPackMask songPackMask, BeatmapDifficultyMask allowedBeatmapDifficultyMask, Il2CppString* actionText, Il2CppString* titleText) {
     getLogger().info("Enabling custom songs in multiplayer . . .");
@@ -277,9 +341,9 @@ extern "C" void load()
     INSTALL_HOOK_OFFSETLESS(getLogger(), PlatformAuthenticationTokenProvider_GetAuthenticationToken,
         il2cpp_utils::FindMethod("", "PlatformAuthenticationTokenProvider", "GetAuthenticationToken"));
     INSTALL_HOOK_OFFSETLESS(getLogger(), MainSystemInit_Init,
+        il2cpp_utils::FindMethod("", "MainSystemInit", "Init"));
     INSTALL_HOOK_OFFSETLESS(getLogger(), UserMessageHandler_ValidateCertificateChainInternal,
         il2cpp_utils::FindMethodUnsafe("MasterServer", "UserMessageHandler", "ValidateCertificateChainInternal", 2));
-        il2cpp_utils::FindMethodUnsafe("", "MultiplayerLevelLoader", "LoadLevel", 3));
     INSTALL_HOOK_OFFSETLESS(getLogger(), MultiplayerModeSelectionViewController_DidActivate,
         il2cpp_utils::FindMethodUnsafe("", "MultiplayerModeSelectionViewController", "DidActivate", 3));
     INSTALL_HOOK_OFFSETLESS(getLogger(), MainMenuViewController_DidActivate, 
@@ -292,5 +356,9 @@ extern "C" void load()
         il2cpp_utils::FindMethodUnsafe("", "HostLobbySetupViewController", "SetStartGameEnabled", 2));
     INSTALL_HOOK_OFFSETLESS(getLogger(), LevelSelectionNavigationController_Setup,
         il2cpp_utils::FindMethodUnsafe("", "LevelSelectionNavigationController", "Setup", 11));
+    //INSTALL_HOOK_OFFSETLESS(getLogger(), NetworkPlayerEntitlementChecker_GetPlayerLevelEntitlementsAsync,
+    //    il2cpp_utils::FindMethodUnsafe("", "NetworkPlayerEntitlementChecker", "GetPlayerLevelEntitlementsAsync", 3));
+    INSTALL_HOOK_OFFSETLESS(getLogger(), MultiplayerLevelLoader_LoadLevel,
+        il2cpp_utils::FindMethodUnsafe("", "MultiplayerLevelLoader", "LoadLevel", 3));
 
 }
