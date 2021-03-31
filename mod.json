@@ -18,8 +18,8 @@
     "dependencies": [
         {
             "id": "beatsaber-hook",
-            "version": "^1.2.3",
-            "downloadIfMissing": "https://cdn.discordapp.com/attachments/769457887415894036/822610080234078278/libbeatsaber-hook_1_2_3.qmod"
+            "version": "^1.2.4",
+            "downloadIfMissing": "https://cdn.discordapp.com/attachments/769457887415894036/826405432641060904/beatsaber-hook_1_2_4.qmod"
         },
         {
             "id": "questui",
