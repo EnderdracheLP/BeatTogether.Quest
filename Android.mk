@@ -8,18 +8,18 @@ TARGET_ARCH_ABI := arm64-v8a
 include $(CLEAR_VARS)
 LOCAL_MODULE := hook
 rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
-# Creating prebuilt for dependency: codegen - version: 0.7.0
+# Creating prebuilt for dependency: codegen - version: 0.6.2
 include $(CLEAR_VARS)
-LOCAL_MODULE := codegen_0_7_0
+LOCAL_MODULE := codegen_0_6_2
 LOCAL_EXPORT_C_INCLUDES := extern/codegen
-LOCAL_SRC_FILES := extern/libcodegen_0_7_0.so
+LOCAL_SRC_FILES := extern/libcodegen_0_6_2.so
 LOCAL_CPP_FEATURES += exceptions
 include $(PREBUILT_SHARED_LIBRARY)
-# Creating prebuilt for dependency: beatsaber-hook - version: 1.2.4
+# Creating prebuilt for dependency: beatsaber-hook - version: 1.0.12
 include $(CLEAR_VARS)
-LOCAL_MODULE := beatsaber-hook_1_2_4
+LOCAL_MODULE := beatsaber-hook_1_0_12
 LOCAL_EXPORT_C_INCLUDES := extern/beatsaber-hook
-LOCAL_SRC_FILES := extern/libbeatsaber-hook_1_2_4.so
+LOCAL_SRC_FILES := extern/libbeatsaber-hook_1_0_12.so
 include $(PREBUILT_SHARED_LIBRARY)
 # Creating prebuilt for dependency: modloader - version: 1.0.4
 include $(CLEAR_VARS)

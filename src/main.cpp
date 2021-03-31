@@ -76,7 +76,7 @@ class ModConfig {
             }
             file.close();
         }
-        inline int get_port() const {
+        constexpr inline int get_port() const {
             return port;
         }
         inline Il2CppString* get_hostname() const {
@@ -135,8 +135,8 @@ Il2CppString* getCustomLevelStr() {
 
 // Helper method for concatenating two strings using the Concat(System.Object) method.
 Il2CppString* concatHelper(Il2CppString* src, Il2CppString* dst) {
-    static auto* concatMethod = il2cpp_utils::FindMethod(il2cpp_functions::defaults->string_class, "Concat", il2cpp_functions::defaults->string_class, il2cpp_functions::defaults->string_class);
-    return RET_DEFAULT_UNLESS(getLogger(), il2cpp_utils::RunMethod<Il2CppString*>((Il2CppObject*) nullptr, concatMethod, src, dst));
+    static auto* concatMethod = il2cpp_utils::FindMethod(il2cpp_functions::defaults->string_class, "Concat", std::vector<Il2CppClass*>{il2cpp_functions::defaults->object_class});
+    return RET_DEFAULT_UNLESS(getLogger(), il2cpp_utils::RunMethod<Il2CppString*>(src, concatMethod, dst));
 }
 
 MAKE_HOOK_OFFSETLESS(PlatformAuthenticationTokenProvider_GetAuthenticationToken, System::Threading::Tasks::Task_1<GlobalNamespace::AuthenticationToken>*, PlatformAuthenticationTokenProvider* self)
@@ -155,20 +155,20 @@ MAKE_HOOK_OFFSETLESS(MainSystemInit_Init, void, MainSystemInit* self) {
     auto* networkConfig = self->networkConfig;
 
     getLogger().info("Overriding master server end point . . .");
-    getLogger().info("Original status URL: " + to_utf8(csstrtostr(networkConfig->masterServerStatusUrl)));
     // If we fail to make the strings, we should fail silently
     // This could also be replaced with a CRASH_UNLESS call, if you want to fail verbosely.
-    networkConfig->masterServerHostName = CRASH_UNLESS(/*getLogger(), */config.get_hostname());
-    networkConfig->masterServerPort = CRASH_UNLESS(/*getLogger(), */config.get_port());
-    networkConfig->masterServerStatusUrl = CRASH_UNLESS(/*getLogger(), */config.get_statusUrl());
+    networkConfig->masterServerHostName = RET_V_UNLESS(getLogger(), config.get_hostname());
+    networkConfig->masterServerPort = RET_V_UNLESS(getLogger(), config.get_port());
+    networkConfig->masterServerStatusUrl = RET_V_UNLESS(getLogger(), config.get_statusUrl());
 }
 
-MAKE_HOOK_OFFSETLESS(UserMessageHandler_ValidateCertificateChainInternal, void, Il2CppObject* self, Il2CppObject* certificate, Il2CppObject* certificateChain)
+MAKE_HOOK_OFFSETLESS(X509CertificateUtility_ValidateCertificateChainUnity, void, Il2CppObject* self, Il2CppObject* certificate, Il2CppObject* certificateChain)
 {
     // TODO: Support disabling the mod if official multiplayer is ever fixed
     // It'd be best if we do certificate validation here...
     // but for now we'll just skip it.
 }
+
 
 
 
@@ -200,7 +200,6 @@ MAKE_HOOK_OFFSETLESS(MainMenuViewController_DidActivate, void, MainMenuViewContr
     TMPro::TextMeshProUGUI* onlineButtonText = onlineButtonTextObj->GetComponent<TMPro::TextMeshProUGUI*>();
     // If we fail to get any valid button text, crash verbosely.
     // TODO: This could be replaced with a non-intense crash, if we can ensure that DidActivate also works as intended.
-    onlineButtonText->set_text(CRASH_UNLESS(config.get_button()));
     
     // Align the Text in the Center
     onlineButtonText->set_alignment(TMPro::TextAlignmentOptions::Center);
@@ -237,6 +236,7 @@ MAKE_HOOK_OFFSETLESS(HostLobbySetupViewController_SetStartGameEnabled, void, Hos
     }
     HostLobbySetupViewController_SetStartGameEnabled(self, startGameEnabled, cannotStartGameReason);
 }
+
 
 MAKE_HOOK_OFFSETLESS(MultiplayerLevelSelectionFlowCoordinator_Setup, void, MultiplayerLevelSelectionFlowCoordinator* self, LevelSelectionFlowCoordinator::State* state, SongPackMask songPackMask, BeatmapDifficultyMask allowedBeatmapDifficultyMask, Il2CppString* actionText, Il2CppString* titleText) {
     getLogger().info("Enabling custom songs in multiplayer . . .");
@@ -277,9 +277,9 @@ extern "C" void load()
     INSTALL_HOOK_OFFSETLESS(getLogger(), PlatformAuthenticationTokenProvider_GetAuthenticationToken,
         il2cpp_utils::FindMethod("", "PlatformAuthenticationTokenProvider", "GetAuthenticationToken"));
     INSTALL_HOOK_OFFSETLESS(getLogger(), MainSystemInit_Init,
-        il2cpp_utils::FindMethod("", "MainSystemInit", "Init"));
     INSTALL_HOOK_OFFSETLESS(getLogger(), UserMessageHandler_ValidateCertificateChainInternal,
         il2cpp_utils::FindMethodUnsafe("MasterServer", "UserMessageHandler", "ValidateCertificateChainInternal", 2));
+        il2cpp_utils::FindMethodUnsafe("", "MultiplayerLevelLoader", "LoadLevel", 3));
     INSTALL_HOOK_OFFSETLESS(getLogger(), MultiplayerModeSelectionViewController_DidActivate,
         il2cpp_utils::FindMethodUnsafe("", "MultiplayerModeSelectionViewController", "DidActivate", 3));
     INSTALL_HOOK_OFFSETLESS(getLogger(), MainMenuViewController_DidActivate, 
